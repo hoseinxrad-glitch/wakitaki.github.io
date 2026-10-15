@@ -7,7 +7,8 @@ const ORIGIN = process.env.ALLOWED_ORIGIN || '';
 
 const rooms = new Map(); // name -> { clients:Set, talker, msgs:[] }
 const banned = new Set();
-let mid = 0;
+let mid = 0, pidSeq = 0;
+const peersMsg = (r) => bc(r, { type: 'peers', peers: [...r.clients].map((c) => ({ id: c.pid, name: c.userName })) });
 
 const send = (ws, o) => ws.readyState === 1 && ws.send(JSON.stringify(o));
 const bc = (r, o, ex) => { for (const c of r.clients) if (c !== ex) send(c, o); };
@@ -50,18 +51,27 @@ wss.on('connection', (ws, req) => {
   const roomName = (q.get('room') || 'general').trim().slice(0, 40) || 'general';
   const name = (q.get('name') || 'ناشناس').trim().slice(0, 30) || 'ناشناس';
   ws.userName = name;
+  const meet = q.get('mode') === 'meet'; // حالت تماس تصویری: کانال‌های جدا از واکی‌تاکی
+  const key = (meet ? 'meet:' : '') + roomName;
+  ws.pid = ++pidSeq & 0xffff;
   if (banned.has(name)) { send(ws, { type: 'kicked' }); return ws.close(); }
 
-  let room = rooms.get(roomName);
-  if (!room) rooms.set(roomName, (room = { clients: new Set(), talker: null, msgs: [] }));
+  let room = rooms.get(key);
+  if (!room) rooms.set(key, (room = { clients: new Set(), talker: null, msgs: [] }));
   room.clients.add(ws);
   ws.isAlive = true;
   ws.on('pong', () => (ws.isAlive = true));
   send(ws, { type: 'history', msgs: room.msgs });
   send(ws, room.talker ? { type: 'talking', name: room.talker.userName, video: room.talker.video } : { type: 'idle' });
   presence(room);
+  if (meet) { send(ws, { type: 'you', id: ws.pid }); peersMsg(room); }
 
   ws.on('message', (data, isBinary) => {
+    if (isBinary && meet) { // تماس تصویری: همه‌ی صدا و تصویرها با شناسه‌ی فرستنده پخش می‌شوند
+      const out = Buffer.concat([Buffer.from([ws.pid >> 8, ws.pid & 255]), data]);
+      for (const c of room.clients) if (c !== ws && c.readyState === 1) c.send(out, { binary: true });
+      return;
+    }
     if (isBinary) { // صدا یا تصویر گوینده‌ی فعلی
       if (room.talker !== ws) return;
       for (const c of room.clients) if (c !== ws && c.readyState === 1) c.send(data, { binary: true });
@@ -84,9 +94,10 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     release(room, ws);
     room.clients.delete(ws);
-    if (!room.clients.size && !room.msgs.length) rooms.delete(roomName);
+    if (!room.clients.size && !room.msgs.length) rooms.delete(key);
     else presence(room);
-  }); 
+    if (meet) peersMsg(room);
+  });
   ws.on('error', () => {});
 });
 
