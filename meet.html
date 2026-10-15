@@ -79,6 +79,7 @@ const $ = (id) => document.getElementById(id);
 let ws, ctx, micStream, camStream, encoder, joined = false, micOn = true, camOn = false;
 let myId = -1, cfg = {}, opusBuf = new Float32Array(0), opusTs = 0, vidTimer = null, reconnect = null;
 const peers = new Map(); // id -> { name, tile, img, av, dec, next, lead, last, lastVid, ts }
+let denied = null;
 const camVideo = document.createElement('video'), camCanvas = document.createElement('canvas');
 
 try { $('name').value = localStorage.getItem('mt-name') || ''; $('room').value = localStorage.getItem('mt-room') || ''; } catch (e) {}
@@ -142,11 +143,20 @@ function feedOpus(chunk) {
   opusBuf = m.slice(off);
 }
 
+function onDenied() {
+  const why = denied; denied = null;
+  if (why === 'password') {
+    const pw = prompt('این کانال رمز دارد. رمز را وارد کنید:');
+    if (pw) { cfg.pw = pw; return connect(); }
+  } else alert(why === 'locked' ? 'این کانال قفل است.' : why === 'full' ? 'ظرفیت این کانال پر است.' : 'ورود ممکن نشد.');
+  leave();
+}
+
 function connect() {
   clearTimeout(reconnect);
-  ws = new WebSocket(WS_URL + '/?' + new URLSearchParams({ room: cfg.room, name: cfg.name, mode: 'meet' }));
+  ws = new WebSocket(WS_URL + '/?' + new URLSearchParams({ room: cfg.room, name: cfg.name, mode: 'meet', ...(cfg.pw ? { pw: cfg.pw } : {}) }));
   ws.binaryType = 'arraybuffer';
-  ws.onclose = () => { if (joined) reconnect = setTimeout(connect, 2000); };
+  ws.onclose = () => { if (denied) return onDenied(); if (joined) reconnect = setTimeout(connect, 2000); };
   ws.onmessage = (ev) => {
     if (typeof ev.data !== 'string') {
       const u = new Uint8Array(ev.data), p = peers.get((u[0] << 8) | u[1]);
@@ -161,6 +171,9 @@ function connect() {
     else if (m.type === 'chat') addMsg(m);
     else if (m.type === 'deleted') { const e = $('log').querySelector('[data-id="' + m.id + '"]'); if (e) e.remove(); }
     else if (m.type === 'kicked') { joined = false; alert('ادمین شما را از تماس خارج کرد'); leave(); }
+    else if (m.type === 'system') { addMsg({ id: 's' + Date.now(), name: 'سیستم', text: m.text }); $('chat').hidden = false; }
+    else if (m.type === 'renamed') cfg.room = m.room.replace(/^meet:/, '');
+    else if (m.type === 'denied') denied = m.reason;
   };
 }
 

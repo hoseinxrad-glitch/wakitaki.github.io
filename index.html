@@ -151,6 +151,7 @@ const $ = (id) => document.getElementById(id);
 let ws, ctx, micStream, workletNode;
 let joined = false, connected = false, talking = false, receiving = false;
 let nextTime = 0, pending = [], pendingLen = 0, reconnectTimer = null, cfg = {};
+let denied = null;
 // صدای فشرده (Opus) در صورت پشتیبانی مرورگر، وگرنه PCM
 const OPUS_RATE = 48000, FRAME = 960; // ۲۰ میلی‌ثانیه
 let encoder = null, decoder = null, useOpus = false;
@@ -296,9 +297,18 @@ function flush() {
   }
 }
 
+function onDenied() {
+  const why = denied; denied = null;
+  if (why === 'password') {
+    const pw = prompt('این کانال رمز دارد. رمز را وارد کنید:');
+    if (pw) { cfg.pw = pw; return connect(); }
+  } else alert(why === 'locked' ? 'این کانال قفل است.' : why === 'full' ? 'ظرفیت این کانال پر است.' : 'ورود ممکن نشد.');
+  $('leave').click();
+}
+
 function connect() {
   clearTimeout(reconnectTimer);
-  const q = new URLSearchParams({ room: cfg.room, name: cfg.name });
+  const q = new URLSearchParams({ room: cfg.room, name: cfg.name, ...(cfg.pw ? { pw: cfg.pw } : {}) });
   ws = new WebSocket(WS_URL + '/?' + q);
   ws.binaryType = 'arraybuffer';
 
@@ -312,6 +322,7 @@ function connect() {
     receiving = false;
     stopTalking(false);
     $('ptt').disabled = true;
+    if (denied) return onDenied();
     if (joined) {
       setStatus('اتصال قطع شد، در حال تلاش دوباره…', 'err');
       reconnectTimer = setTimeout(connect, 2000);
@@ -325,6 +336,9 @@ function connect() {
     else if (m.type === 'chat') addMsg(m);
     else if (m.type === 'deleted') { const e = $('log').querySelector('[data-id="' + m.id + '"]'); if (e) e.remove(); }
     else if (m.type === 'kicked') { joined = false; setStatus('ادمین شما را از کانال خارج کرد', 'err'); }
+    else if (m.type === 'system') addMsg({ id: 's' + Date.now(), name: 'سیستم', text: m.text });
+    else if (m.type === 'renamed') { cfg.room = m.room; $('roomTitle').textContent = 'کانال: ' + m.room; }
+    else if (m.type === 'denied') denied = m.reason;
     else if (m.type === 'talking') { receiving = true; nextTime = 0; setStatus(m.name + ' صحبت می‌کند', 'rx'); $('vid').hidden = !m.video; }
     else if (m.type === 'idle') { receiving = false; $('vid').hidden = true; if (!talking) refreshIdle(); }
     else if (m.type === 'busy') { stopTalking(false); setStatus('کانال مشغول است: ' + m.name, 'err'); }

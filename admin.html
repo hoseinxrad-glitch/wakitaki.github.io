@@ -4,55 +4,120 @@
 <title>پنل ادمین</title>
 <style>
 body{font-family:system-ui,Tahoma,sans-serif;background:#222b22;color:#e8e2d0;margin:0;padding:20px}
-main{max-width:760px;margin:auto}input,button{font:inherit;padding:8px 12px;border-radius:8px;border:0}
+main{max-width:820px;margin:auto}
+input,button,textarea{font:inherit;padding:8px 12px;border-radius:8px;border:0}
+input,textarea{background:#efe9d3;color:#1b2119}
 button{background:#d8d2ba;color:#1b2119;cursor:pointer;margin:2px}
-.room{background:#2f3a2f;border-radius:12px;padding:14px;margin:14px 0}
+button.danger{background:#e5534b;color:#fff}
+.box{background:#2f3a2f;border-radius:12px;padding:14px;margin:12px 0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .msg{display:flex;justify-content:space-between;gap:8px;border-top:1px solid #444;padding:6px 0;font-size:14px}
 h3,h4{margin:6px 0}.muted{color:#9aa58f;font-size:13px}
+.stat{font-size:15px;line-height:2}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #ffae00;outline-offset:2px}
 </style></head><body><main>
 <h2>پنل ادمین واکی‌تاکی</h2>
-<input id="pw" type="password" placeholder="رمز ادمین"> <button id="go">ورود</button>
-<span class="muted" id="msg"></span>
-<div id="out"></div>
+<div class="row"><input id="pw" type="password" placeholder="رمز ادمین"> <button id="go">ورود</button><span class="muted" id="msg"></span></div>
+
+<div id="panel" hidden>
+  <div class="box"><h3>آمار زنده</h3><div class="stat" id="stats"></div></div>
+
+  <div class="box"><h3>اعلان همگانی</h3>
+    <div class="row"><input id="annText" placeholder="متن اعلان برای همه‌ی کانال‌ها" style="flex:1" maxlength="500"><button id="annBtn">ارسال</button></div>
+  </div>
+
+  <div class="box"><h3>تنظیمات</h3>
+    <div class="row">
+      <label>حداکثر نفرات هر اتاق (۰ = نامحدود) <input id="maxUsers" type="number" min="0" style="width:90px"></label>
+      <label>حداکثر طول پیام <input id="maxLen" type="number" min="20" max="2000" style="width:90px"></label>
+    </div>
+    <p class="muted">کلمات ممنوعه (با ویرگول جدا کنید؛ پیام‌های حاوی آن‌ها ارسال نمی‌شود)</p>
+    <textarea id="bad" rows="2" style="width:100%"></textarea>
+    <button id="saveSet">ذخیره‌ی تنظیمات</button>
+  </div>
+
+  <div class="box"><h3>ساخت کانال</h3>
+    <div class="row"><input id="newRoom" placeholder="نام کانال" maxlength="40">
+    <label><input type="checkbox" id="newMeet"> تماس تصویری</label><button id="newBtn">ساخت</button></div>
+  </div>
+
+  <div class="row"><input id="q" placeholder="جستجو در کانال‌ها، کاربرها و پیام‌ها" style="flex:1"></div>
+  <div id="out"></div>
+</div>
 </main>
 <script>
 const SERVER = 'https://wakitaki-github-io.onrender.com';
 const $ = (id) => document.getElementById(id);
+let last = null, filled = false;
+
 async function call(act, data = {}) {
-  const r = await fetch(SERVER + '/admin/' + act, {
-    method: 'POST', headers: { 'x-admin': $('pw').value, 'content-type': 'application/json' },
-    body: JSON.stringify(data),
-  });
-  if (r.status === 401) { $('msg').textContent = 'رمز اشتباه است'; return null; }
-  $('msg').textContent = '';
-  return r.json();
+  try {
+    const r = await fetch(SERVER + '/admin/' + act, {
+      method: 'POST', headers: { 'x-admin': $('pw').value, 'content-type': 'application/json' }, body: JSON.stringify(data),
+    });
+    if (r.status === 401) { $('msg').textContent = 'رمز اشتباه است'; return null; }
+    $('msg').textContent = '';
+    last = await r.json(); render(); return last;
+  } catch (e) { $('msg').textContent = 'اتصال به سرور برقرار نشد'; return null; }
 }
 function el(tag, text, cls) { const e = document.createElement(tag); e.textContent = text || ''; if (cls) e.className = cls; return e; }
-function btn(text, fn) { const b = el('button', text); b.onclick = async () => render(await fn()); return b; }
-function render(s) {
-  if (!s) return;
+function btn(text, fn, danger) { const b = el('button', text, danger ? 'danger' : ''); b.onclick = fn; return b; }
+const mb = (n) => (n / 1048576).toFixed(1) + ' مگابایت';
+
+function render() {
+  const s = last; if (!s) return;
+  $('panel').hidden = false;
+  const st = s.stats;
+  $('stats').textContent = 'آنلاین: ' + st.online + ' | کانال‌ها: ' + st.rooms + ' | پیام‌ها: ' + st.totalMsgs +
+    ' | حجم داده‌ی صدا و تصویر: ' + mb(st.bytes) + ' | مدت کار سرور: ' + Math.floor(st.uptime / 60) + ' دقیقه';
+  if (!filled) {
+    filled = true;
+    $('maxUsers').value = s.settings.maxUsers; $('maxLen').value = s.settings.maxLen; $('bad').value = s.settings.badWords.join('، ');
+  }
+  const term = $('q').value.trim().toLowerCase(), has = (t) => String(t).toLowerCase().includes(term);
   const out = $('out'); out.textContent = '';
-  const ban = el('div', '', 'room'); ban.append(el('h3', 'کاربران مسدود'));
-  if (!s.banned.length) ban.append(el('div', 'هیچ‌کس', 'muted'));
-  s.banned.forEach((n) => { const d = el('div', n + ' '); d.append(btn('رفع مسدودی', () => call('unban', { name: n }))); ban.append(d); });
-  out.append(ban);
+
+  const lists = el('div', '', 'box'); lists.append(el('h3', 'بی‌صدا شده‌ها و مسدودها'));
+  if (!s.muted.length && !s.banned.length) lists.append(el('div', 'هیچ‌کس', 'muted'));
+  s.muted.forEach((n) => { const d = el('div', 'بی‌صدا: ' + n + ' '); d.append(btn('رفع بی‌صدایی', () => call('unmute', { name: n }))); lists.append(d); });
+  s.banned.forEach((n) => { const d = el('div', 'مسدود: ' + n + ' '); d.append(btn('رفع مسدودی', () => call('unban', { name: n }))); lists.append(d); });
+  out.append(lists);
+
   s.rooms.forEach((r) => {
-    const box = el('div', '', 'room');
-    box.append(el('h3', 'کانال: ' + r.name));
-    box.append(el('h4', 'آنلاین (' + r.users.length + ')'));
-    r.users.forEach((u) => {
+    const users = term ? r.users.filter(has) : r.users, msgs = term ? r.msgs.filter((m) => has(m.name) || has(m.text)) : r.msgs;
+    if (term && !has(r.name) && !users.length && !msgs.length) return;
+    const box = el('div', '', 'box');
+    const kind = r.name.startsWith('meet:') ? 'تماس تصویری' : 'واکی‌تاکی';
+    box.append(el('h3', r.name.replace(/^meet:/, '') + ' (' + kind + ')'));
+    box.append(el('div', r.users.length + ' نفر آنلاین | ' + r.msgs.length + ' پیام | ' + mb(r.bytes) + (r.locked ? ' | قفل' : '') + (r.hasPassword ? ' | رمزدار' : ''), 'muted'));
+    const ctl = el('div', '', 'row');
+    ctl.append(
+      btn(r.locked ? 'باز کردن قفل' : 'قفل کردن', () => call('lock', { room: r.name, locked: !r.locked })),
+      btn('تنظیم رمز', () => { const p = prompt('رمز جدید (خالی = بدون رمز):'); if (p !== null) call('setpw', { room: r.name, password: p }); }),
+      btn('اعلان به این کانال', () => { const t = prompt('متن اعلان:'); if (t) call('announce', { room: r.name, text: t }); }),
+      btn('تغییر نام', () => { const t = prompt('نام جدید کانال:'); if (t) call('rename', { room: r.name, to: t }); }),
+      btn('پاک کردن پیام‌ها', () => call('clear', { room: r.name })),
+      btn('حذف کانال', () => { if (confirm('کانال و اتصال همه‌ی اعضا حذف شود؟')) call('delroom', { room: r.name }); }, true),
+    );
+    box.append(ctl, el('h4', 'آنلاین‌ها'));
+    users.forEach((u) => {
       const d = el('div', u + ' ');
-      d.append(btn('اخراج', () => call('kick', { room: r.name, name: u })), btn('مسدود', () => call('ban', { name: u })));
+      d.append(btn('اخراج', () => call('kick', { room: r.name, name: u })), btn('بی‌صدا', () => call('mute', { name: u })), btn('مسدود', () => call('ban', { name: u }), true));
       box.append(d);
     });
-    box.append(el('h4', 'پیام‌ها (' + r.msgs.length + ')'), btn('پاک کردن همه', () => call('clear', { room: r.name })));
-    r.msgs.slice().reverse().forEach((m) => {
+    box.append(el('h4', 'گفتگوی زنده'));
+    msgs.slice().reverse().forEach((m) => {
       const d = el('div', '', 'msg'); d.append(el('span', m.name + ': ' + m.text));
       d.append(btn('حذف', () => call('delete', { room: r.name, id: m.id }))); box.append(d);
     });
     out.append(box);
   });
 }
-$('go').onclick = async () => render(await call('state'));
-setInterval(async () => { if ($('pw').value && $('out').children.length) render(await call('state')); }, 10000);
+
+$('go').onclick = () => call('state');
+$('q').oninput = render;
+$('annBtn').onclick = () => { const t = $('annText').value.trim(); if (t) { call('announce', { text: t }); $('annText').value = ''; } };
+$('saveSet').onclick = () => call('settings', { maxUsers: $('maxUsers').value, maxLen: $('maxLen').value, badWords: $('bad').value.split(/[,،]/) });
+$('newBtn').onclick = () => { const n = $('newRoom').value.trim(); if (n) { call('create', { room: n, meet: $('newMeet').checked }); $('newRoom').value = ''; } };
+setInterval(() => { if (last && !document.hidden) call('state'); }, 4000);
 </script></body></html>

@@ -5,20 +5,40 @@ const PORT = process.env.PORT || 3000;
 const ADMIN = process.env.ADMIN_PASSWORD || '';
 const ORIGIN = process.env.ALLOWED_ORIGIN || '';
 
-const rooms = new Map(); // name -> { clients:Set, talker, msgs:[] }
-const banned = new Set();
-let mid = 0, pidSeq = 0;
-const peersMsg = (r) => bc(r, { type: 'peers', peers: [...r.clients].map((c) => ({ id: c.pid, name: c.userName })) });
+const rooms = new Map(); // key -> room  (تماس تصویری با پیشوند meet:)
+const banned = new Set(), muted = new Set();
+const settings = { maxUsers: 0, maxLen: 500, badWords: [] };
+const started = Date.now();
+let mid = 0, pidSeq = 0, totalMsgs = 0;
 
 const send = (ws, o) => ws.readyState === 1 && ws.send(JSON.stringify(o));
 const bc = (r, o, ex) => { for (const c of r.clients) if (c !== ex) send(c, o); };
+const sys = (r, text) => bc(r, { type: 'system', text });
 const presence = (r) => bc(r, { type: 'presence', count: r.clients.size, users: [...r.clients].map((c) => c.userName) });
+const peersMsg = (r) => bc(r, { type: 'peers', peers: [...r.clients].map((c) => ({ id: c.pid, name: c.userName })) });
 const release = (r, ws) => { if (r.talker === ws) { r.talker = null; bc(r, { type: 'idle' }, ws); } };
-function kick(name, roomName) {
-  for (const [rn, r] of rooms)
-    if (!roomName || rn === roomName)
+const newRoom = (key) => ({ key, clients: new Set(), talker: null, msgs: [], locked: false, password: '', persist: false, bytes: 0 });
+
+function kick(name, key) {
+  for (const [k, r] of rooms)
+    if (!key || k === key)
       for (const c of [...r.clients]) if (c.userName === name) { send(c, { type: 'kicked' }); c.close(); }
 }
+
+const snapshot = () => {
+  const rs = [...rooms.values()];
+  return {
+    stats: {
+      online: rs.reduce((n, r) => n + r.clients.size, 0), rooms: rs.length, totalMsgs,
+      bytes: rs.reduce((n, r) => n + r.bytes, 0), uptime: Math.floor((Date.now() - started) / 1000),
+    },
+    settings, banned: [...banned], muted: [...muted],
+    rooms: rs.map((r) => ({
+      name: r.key, users: [...r.clients].map((c) => c.userName), msgs: r.msgs,
+      locked: r.locked, hasPassword: !!r.password, bytes: r.bytes,
+    })),
+  };
+};
 
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -29,16 +49,39 @@ const server = http.createServer(async (req, res) => {
   let body = ''; for await (const c of req) body += c;
   let d = {}; try { d = JSON.parse(body || '{}'); } catch {}
   const act = req.url.slice(7), r = rooms.get(d.room);
+
   if (act === 'kick') kick(d.name, d.room);
   else if (act === 'ban') { banned.add(d.name); kick(d.name); }
   else if (act === 'unban') banned.delete(d.name);
+  else if (act === 'mute') muted.add(d.name);
+  else if (act === 'unmute') muted.delete(d.name);
   else if (act === 'delete' && r) { r.msgs = r.msgs.filter((m) => m.id !== d.id); bc(r, { type: 'deleted', id: d.id }); }
   else if (act === 'clear' && r) { for (const m of r.msgs) bc(r, { type: 'deleted', id: m.id }); r.msgs = []; }
+  else if (act === 'announce' && d.text) {
+    const t = String(d.text).slice(0, 500);
+    if (d.room) { if (r) sys(r, t); } else for (const x of rooms.values()) sys(x, t);
+  }
+  else if (act === 'lock' && r) r.locked = !!d.locked;
+  else if (act === 'setpw' && r) r.password = String(d.password || '').slice(0, 40);
+  else if (act === 'create' && d.room) {
+    const key = (d.meet ? 'meet:' : '') + String(d.room).trim().slice(0, 40);
+    if (!rooms.has(key)) { const x = newRoom(key); x.persist = true; rooms.set(key, x); }
+  }
+  else if (act === 'delroom' && r) {
+    for (const c of [...r.clients]) { send(c, { type: 'kicked' }); c.close(); }
+    rooms.delete(d.room);
+  }
+  else if (act === 'rename' && r && d.to) {
+    const to = (d.room.startsWith('meet:') ? 'meet:' : '') + String(d.to).trim().replace(/^meet:/, '').slice(0, 40);
+    if (to && !rooms.has(to)) { rooms.delete(d.room); r.key = to; rooms.set(to, r); bc(r, { type: 'renamed', room: to }); }
+  }
+  else if (act === 'settings') {
+    settings.maxUsers = Math.max(0, parseInt(d.maxUsers, 10) || 0);
+    settings.maxLen = Math.min(2000, Math.max(20, parseInt(d.maxLen, 10) || 500));
+    settings.badWords = (Array.isArray(d.badWords) ? d.badWords : []).map((w) => String(w).trim().toLowerCase()).filter(Boolean).slice(0, 200);
+  }
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({
-    banned: [...banned],
-    rooms: [...rooms].map(([name, x]) => ({ name, users: [...x.clients].map((c) => c.userName), msgs: x.msgs })),
-  }));
+  res.end(JSON.stringify(snapshot()));
 });
 
 const wss = new WebSocketServer({
@@ -50,14 +93,19 @@ wss.on('connection', (ws, req) => {
   const q = new URL(req.url, 'http://x').searchParams;
   const roomName = (q.get('room') || 'general').trim().slice(0, 40) || 'general';
   const name = (q.get('name') || 'ناشناس').trim().slice(0, 30) || 'ناشناس';
-  ws.userName = name;
-  const meet = q.get('mode') === 'meet'; // حالت تماس تصویری: کانال‌های جدا از واکی‌تاکی
+  const meet = q.get('mode') === 'meet';
   const key = (meet ? 'meet:' : '') + roomName;
+  ws.userName = name;
   ws.pid = ++pidSeq & 0xffff;
-  if (banned.has(name)) { send(ws, { type: 'kicked' }); return ws.close(); }
+  const deny = (reason) => { send(ws, { type: 'denied', reason }); ws.close(); };
 
+  if (banned.has(name)) { send(ws, { type: 'kicked' }); return ws.close(); }
   let room = rooms.get(key);
-  if (!room) rooms.set(key, (room = { clients: new Set(), talker: null, msgs: [] }));
+  if (!room) rooms.set(key, (room = newRoom(key)));
+  if (room.locked) return deny('locked');
+  if (room.password && q.get('pw') !== room.password) return deny('password');
+  if (settings.maxUsers && room.clients.size >= settings.maxUsers) return deny('full');
+
   room.clients.add(ws);
   ws.isAlive = true;
   ws.on('pong', () => (ws.isAlive = true));
@@ -67,24 +115,33 @@ wss.on('connection', (ws, req) => {
   if (meet) { send(ws, { type: 'you', id: ws.pid }); peersMsg(room); }
 
   ws.on('message', (data, isBinary) => {
-    if (isBinary && meet) { // تماس تصویری: همه‌ی صدا و تصویرها با شناسه‌ی فرستنده پخش می‌شوند
-      const out = Buffer.concat([Buffer.from([ws.pid >> 8, ws.pid & 255]), data]);
-      for (const c of room.clients) if (c !== ws && c.readyState === 1) c.send(out, { binary: true });
-      return;
-    }
-    if (isBinary) { // صدا یا تصویر گوینده‌ی فعلی
+    if (isBinary) {
+      if (muted.has(name)) return;
+      room.bytes += data.length;
+      if (meet) { // تماس تصویری: همه با شناسه‌ی فرستنده پخش می‌شوند
+        const out = Buffer.concat([Buffer.from([ws.pid >> 8, ws.pid & 255]), data]);
+        for (const c of room.clients) if (c !== ws && c.readyState === 1) c.send(out, { binary: true });
+        return;
+      }
       if (room.talker !== ws) return;
       for (const c of room.clients) if (c !== ws && c.readyState === 1) c.send(data, { binary: true });
       return;
     }
     let m; try { m = JSON.parse(data.toString()); } catch { return; }
+
     if (m.type === 'start') {
+      if (muted.has(name)) return send(ws, { type: 'system', text: 'شما بی‌صدا شده‌اید و نمی‌توانید صحبت کنید.' });
       if (room.talker && room.talker !== ws) return send(ws, { type: 'busy', name: room.talker.userName });
       room.talker = ws; ws.video = !!m.video;
       bc(room, { type: 'talking', name, video: ws.video }, ws);
     } else if (m.type === 'stop') release(room, ws);
     else if (m.type === 'chat' && typeof m.text === 'string' && m.text.trim()) {
-      const msg = { id: ++mid, name, text: m.text.trim().slice(0, 500), t: Date.now() };
+      if (muted.has(name)) return send(ws, { type: 'system', text: 'شما بی‌صدا شده‌اید و نمی‌توانید پیام بفرستید.' });
+      const text = m.text.trim().slice(0, settings.maxLen);
+      const low = text.toLowerCase();
+      if (settings.badWords.some((w) => low.includes(w))) return send(ws, { type: 'system', text: 'پیام شما به دلیل کلمات ممنوعه ارسال نشد.' });
+      const msg = { id: ++mid, name, text, t: Date.now() };
+      totalMsgs++;
       room.msgs.push(msg);
       if (room.msgs.length > 100) room.msgs.shift();
       bc(room, { type: 'chat', ...msg });
@@ -94,9 +151,9 @@ wss.on('connection', (ws, req) => {
   ws.on('close', () => {
     release(room, ws);
     room.clients.delete(ws);
-    if (!room.clients.size && !room.msgs.length) rooms.delete(key);
-    else presence(room);
-    if (meet) peersMsg(room);
+    if (!room.clients.size && !room.msgs.length && !room.persist) {
+      if (rooms.get(room.key) === room) rooms.delete(room.key);
+    } else { presence(room); if (meet) peersMsg(room); }
   });
   ws.on('error', () => {});
 });
