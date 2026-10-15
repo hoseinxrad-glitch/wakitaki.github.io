@@ -138,6 +138,10 @@ const $ = (id) => document.getElementById(id);
 let ws, ctx, micStream, workletNode;
 let joined = false, connected = false, talking = false, receiving = false;
 let nextTime = 0, pending = [], pendingLen = 0, reconnectTimer = null, cfg = {};
+// صدای فشرده (Opus) در صورت پشتیبانی مرورگر، وگرنه PCM
+const OPUS_RATE = 48000, FRAME = 960; // ۲۰ میلی‌ثانیه
+let encoder = null, decoder = null, useOpus = false;
+let opusBuf = new Float32Array(0), opusTs = 0, decTs = 0, lead = 0.3;
 
 try {
   $('name').value = localStorage.getItem('wt-name') || '';
@@ -171,12 +175,14 @@ async function join() {
   try { localStorage.setItem('wt-name', name); localStorage.setItem('wt-room', room); } catch (e) {}
 
   try {
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const AC = window.AudioContext || window.webkitAudioContext;
+    try { ctx = new AC({ sampleRate: OPUS_RATE }); } catch (e) { ctx = new AC(); }
     await ctx.resume();
     micStream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
     });
     await setupCapture();
+    await setupEncoder();
   } catch (e) {
     $('err').textContent = 'دسترسی به میکروفن ممکن نشد. اجازه‌ی میکروفن را در مرورگر فعال کنید و دوباره امتحان کنید.';
     return;
@@ -204,10 +210,51 @@ async function setupCapture() {
   mute.connect(ctx.destination);
   workletNode.port.onmessage = (e) => {
     if (!talking) return;
+    if (useOpus) return feedOpus(e.data);
     pending.push(e.data);
     pendingLen += e.data.length;
     if (pendingLen >= 4096) flush();
   };
+}
+
+async function setupEncoder() {
+  useOpus = false;
+  if (!window.AudioEncoder || !window.AudioData || ctx.sampleRate !== OPUS_RATE) return;
+  try {
+    const conf = { codec: 'opus', sampleRate: OPUS_RATE, numberOfChannels: 1, bitrate: 24000 };
+    const sup = await AudioEncoder.isConfigSupported(conf);
+    if (!sup.supported) return;
+    encoder = new AudioEncoder({
+      output: (chunk) => {
+        if (!ws || ws.readyState !== 1) return;
+        const b = new Uint8Array(chunk.byteLength + 1);
+        b[0] = 1; // برچسب: Opus
+        chunk.copyTo(b.subarray(1));
+        ws.send(b.buffer);
+      },
+      error: () => { useOpus = false; },
+    });
+    encoder.configure(conf);
+    useOpus = true;
+  } catch (e) { useOpus = false; }
+}
+
+function feedOpus(chunk) {
+  const merged = new Float32Array(opusBuf.length + chunk.length);
+  merged.set(opusBuf);
+  merged.set(chunk, opusBuf.length);
+  let off = 0;
+  while (merged.length - off >= FRAME) {
+    const ad = new AudioData({
+      format: 'f32-planar', sampleRate: OPUS_RATE, numberOfFrames: FRAME,
+      numberOfChannels: 1, timestamp: opusTs, data: merged.slice(off, off + FRAME),
+    });
+    encoder.encode(ad);
+    ad.close();
+    opusTs += 20000;
+    off += FRAME;
+  }
+  opusBuf = merged.slice(off);
 }
 
 function flush() {
@@ -228,7 +275,12 @@ function flush() {
     const v = Math.max(-1, Math.min(1, sum / (e - s)));
     out[i] = v < 0 ? v * 32768 : v * 32767;
   }
-  if (ws && ws.readyState === 1) ws.send(out.buffer);
+  if (ws && ws.readyState === 1) {
+    const b = new Uint8Array(out.byteLength + 1);
+    b[0] = 0; // برچسب: PCM
+    b.set(new Uint8Array(out.buffer), 1);
+    ws.send(b.buffer);
+  }
 }
 
 function connect() {
@@ -253,7 +305,7 @@ function connect() {
     }
   };
   ws.onmessage = (ev) => {
-    if (typeof ev.data !== 'string') return play(ev.data);
+    if (typeof ev.data !== 'string') return onAudio(ev.data);
     const m = JSON.parse(ev.data);
     if (m.type === 'presence') $('count').textContent = m.count + ' نفر آنلاین';
     else if (m.type === 'talking') { receiving = true; nextTime = 0; setStatus(m.name + ' صحبت می‌کند', 'rx'); }
@@ -262,17 +314,49 @@ function connect() {
   };
 }
 
-function play(buf) {
-  const i16 = new Int16Array(buf);
-  const f = new Float32Array(i16.length);
-  for (let i = 0; i < i16.length; i++) f[i] = i16[i] / 32768;
-  const ab = ctx.createBuffer(1, f.length, SAMPLE_RATE);
+function onAudio(buf) {
+  const u8 = new Uint8Array(buf);
+  if (u8[0] === 0) {
+    const i16 = new Int16Array(buf.slice(1));
+    const f = new Float32Array(i16.length);
+    for (let i = 0; i < i16.length; i++) f[i] = i16[i] / 32768;
+    schedule(f, SAMPLE_RATE);
+  } else if (u8[0] === 1) {
+    if (!window.AudioDecoder) { setStatus('مرورگر شما این نوع صدا را پشتیبانی نمی‌کند', 'err'); return; }
+    ensureDecoder();
+    decoder.decode(new EncodedAudioChunk({ type: 'key', timestamp: decTs, data: u8.subarray(1) }));
+    decTs += 20000;
+  }
+}
+
+function ensureDecoder() {
+  if (decoder && decoder.state === 'configured') return;
+  decoder = new AudioDecoder({
+    output: (ad) => {
+      const f = new Float32Array(ad.numberOfFrames);
+      ad.copyTo(f, { planeIndex: 0, format: 'f32-planar' });
+      const rate = ad.sampleRate;
+      ad.close();
+      schedule(f, rate);
+    },
+    error: () => { decoder = null; },
+  });
+  decoder.configure({ codec: 'opus', sampleRate: OPUS_RATE, numberOfChannels: 1 });
+}
+
+// پخش پیوسته با بافر تطبیقی: هر بار صدا قطع شود، بافر کمی بزرگ‌تر می‌شود
+function schedule(f, rate) {
+  if (!f.length) return;
+  const ab = ctx.createBuffer(1, f.length, rate);
   ab.copyToChannel(f, 0);
   const s = ctx.createBufferSource();
   s.buffer = ab;
   s.connect(ctx.destination);
   const now = ctx.currentTime;
-  if (nextTime < now + 0.05) nextTime = now + 0.15; // بافر کوچک برای صدای روان
+  if (nextTime < now) {
+    if (nextTime !== 0) lead = Math.min(0.8, lead + 0.1);
+    nextTime = now + lead;
+  }
   s.start(nextTime);
   nextTime += ab.duration;
 }
@@ -287,12 +371,17 @@ function startTalking() {
   setStatus('در حال ارسال…', 'tx');
 }
 
-function stopTalking(notify = true) {
+async function stopTalking(notify = true) {
   if (!talking) return;
   talking = false;
-  flush();
-  if (notify && ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stop' }));
   $('ptt').classList.remove('active');
+  if (useOpus && encoder && encoder.state === 'configured') {
+    opusBuf = new Float32Array(0);
+    try { await encoder.flush(); } catch (e) {}
+  } else {
+    flush();
+  }
+  if (notify && ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stop' }));
   if (connected && !receiving) refreshIdle();
 }
 
@@ -315,6 +404,9 @@ $('leave').addEventListener('click', () => {
   stopTalking(false);
   clearTimeout(reconnectTimer);
   if (ws) ws.close();
+  try { if (encoder) encoder.close(); } catch (e) {}
+  try { if (decoder) decoder.close(); } catch (e) {}
+  encoder = null; decoder = null; useOpus = false; opusBuf = new Float32Array(0);
   if (micStream) micStream.getTracks().forEach((t) => t.stop());
   if (ctx) ctx.close();
   $('radio').hidden = true;
