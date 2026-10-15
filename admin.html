@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>پنل ادمین</title>
+<style>
+body{font-family:system-ui,Tahoma,sans-serif;background:#222b22;color:#e8e2d0;margin:0;padding:20px}
+main{max-width:760px;margin:auto}input,button{font:inherit;padding:8px 12px;border-radius:8px;border:0}
+button{background:#d8d2ba;color:#1b2119;cursor:pointer;margin:2px}
+.room{background:#2f3a2f;border-radius:12px;padding:14px;margin:14px 0}
+.msg{display:flex;justify-content:space-between;gap:8px;border-top:1px solid #444;padding:6px 0;font-size:14px}
+h3,h4{margin:6px 0}.muted{color:#9aa58f;font-size:13px}
+</style></head><body><main>
+<h2>پنل ادمین واکی‌تاکی</h2>
+<input id="pw" type="password" placeholder="رمز ادمین"> <button id="go">ورود</button>
+<span class="muted" id="msg"></span>
+<div id="out"></div>
+</main>
+<script>
+const SERVER = 'https://wakitaki-github-io.onrender.com';
+const $ = (id) => document.getElementById(id);
+async function call(act, data = {}) {
+  const r = await fetch(SERVER + '/admin/' + act, {
+    method: 'POST', headers: { 'x-admin': $('pw').value, 'content-type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (r.status === 401) { $('msg').textContent = 'رمز اشتباه است'; return null; }
+  $('msg').textContent = '';
+  return r.json();
+}
+function el(tag, text, cls) { const e = document.createElement(tag); e.textContent = text || ''; if (cls) e.className = cls; return e; }
+function btn(text, fn) { const b = el('button', text); b.onclick = async () => render(await fn()); return b; }
+function render(s) {
+  if (!s) return;
+  const out = $('out'); out.textContent = '';
+  const ban = el('div', '', 'room'); ban.append(el('h3', 'کاربران مسدود'));
+  if (!s.banned.length) ban.append(el('div', 'هیچ‌کس', 'muted'));
+  s.banned.forEach((n) => { const d = el('div', n + ' '); d.append(btn('رفع مسدودی', () => call('unban', { name: n }))); ban.append(d); });
+  out.append(ban);
+  s.rooms.forEach((r) => {
+    const box = el('div', '', 'room');
+    box.append(el('h3', 'کانال: ' + r.name));
+    box.append(el('h4', 'آنلاین (' + r.users.length + ')'));
+    r.users.forEach((u) => {
+      const d = el('div', u + ' ');
+      d.append(btn('اخراج', () => call('kick', { room: r.name, name: u })), btn('مسدود', () => call('ban', { name: u })));
+      box.append(d);
+    });
+    box.append(el('h4', 'پیام‌ها (' + r.msgs.length + ')'), btn('پاک کردن همه', () => call('clear', { room: r.name })));
+    r.msgs.slice().reverse().forEach((m) => {
+      const d = el('div', '', 'msg'); d.append(el('span', m.name + ': ' + m.text));
+      d.append(btn('حذف', () => call('delete', { room: r.name, id: m.id }))); box.append(d);
+    });
+    out.append(box);
+  });
+}
+$('go').onclick = async () => render(await call('state'));
+setInterval(async () => { if ($('pw').value && $('out').children.length) render(await call('state')); }, 10000);
+</script></body></html>

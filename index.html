@@ -95,6 +95,14 @@
   h1 { font-size: 22px; margin: 0 0 4px; }
   .sub { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
   [hidden] { display: none !important; }
+  #vid { display: block; width: 100%; border-radius: 10px; margin-top: 12px; background: #000; }
+  .opts { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-top: 12px; }
+  .opts label { margin: 0; font-weight: 400; display: flex; gap: 6px; align-items: center; }
+  .users { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+  #log { height: 150px; overflow-y: auto; background: #efe9d3; border-radius: 10px; padding: 8px 10px; margin-top: 16px; font-size: 14px; }
+  #log div { padding: 2px 0; word-break: break-word; }
+  .chatbar { display: flex; gap: 8px; margin-top: 8px; }
+  .chatbar .btn { width: auto; margin: 0; padding: 0 16px; font-size: 15px; }
   @media (prefers-reduced-motion: reduce) { #ptt { transition: none; } }
 </style>
 </head>
@@ -120,10 +128,15 @@
       <div class="row"><span id="roomTitle"></span><span id="count"></span></div>
       <div class="status" id="status">در حال اتصال…</div>
     </div>
+    <img id="vid" alt="تصویر گوینده" hidden>
+    <div class="opts"><label><input type="checkbox" id="cam" style="width:auto"> ارسال تصویر وبکم هنگام صحبت</label></div>
+    <p class="users" id="users"></p>
     <div class="ptt-wrap">
       <button id="ptt" disabled aria-label="نگه دارید و صحبت کنید">نگه دار و صحبت کن</button>
     </div>
     <p class="hint">دکمه را نگه دارید یا کلید Space را فشار دهید. با رها کردن، صدا قطع می‌شود.</p>
+    <div id="log" aria-live="polite"></div>
+    <div class="chatbar"><input id="chatIn" maxlength="500" placeholder="پیام بنویسید…"><button class="btn" id="chatBtn">ارسال</button></div>
     <button class="link" id="leave">خروج از کانال</button>
   </section>
 </main>
@@ -307,9 +320,13 @@ function connect() {
   ws.onmessage = (ev) => {
     if (typeof ev.data !== 'string') return onAudio(ev.data);
     const m = JSON.parse(ev.data);
-    if (m.type === 'presence') $('count').textContent = m.count + ' نفر آنلاین';
-    else if (m.type === 'talking') { receiving = true; nextTime = 0; setStatus(m.name + ' صحبت می‌کند', 'rx'); }
-    else if (m.type === 'idle') { receiving = false; if (!talking) refreshIdle(); }
+    if (m.type === 'presence') { $('count').textContent = m.count + ' نفر آنلاین'; $('users').textContent = (m.users || []).join('، '); }
+    else if (m.type === 'history') { $('log').textContent = ''; m.msgs.forEach(addMsg); }
+    else if (m.type === 'chat') addMsg(m);
+    else if (m.type === 'deleted') { const e = $('log').querySelector('[data-id="' + m.id + '"]'); if (e) e.remove(); }
+    else if (m.type === 'kicked') { joined = false; setStatus('ادمین شما را از کانال خارج کرد', 'err'); }
+    else if (m.type === 'talking') { receiving = true; nextTime = 0; setStatus(m.name + ' صحبت می‌کند', 'rx'); $('vid').hidden = !m.video; }
+    else if (m.type === 'idle') { receiving = false; $('vid').hidden = true; if (!talking) refreshIdle(); }
     else if (m.type === 'busy') { stopTalking(false); setStatus('کانال مشغول است: ' + m.name, 'err'); }
   };
 }
@@ -321,6 +338,11 @@ function onAudio(buf) {
     const f = new Float32Array(i16.length);
     for (let i = 0; i < i16.length; i++) f[i] = i16[i] / 32768;
     schedule(f, SAMPLE_RATE);
+  } else if (u8[0] === 2) {
+    const url = URL.createObjectURL(new Blob([u8.subarray(1)], { type: 'image/jpeg' }));
+    const old = $('vid').src;
+    $('vid').src = url;
+    if (old.startsWith('blob:')) URL.revokeObjectURL(old);
   } else if (u8[0] === 1) {
     if (!window.AudioDecoder) { setStatus('مرورگر شما این نوع صدا را پشتیبانی نمی‌کند', 'err'); return; }
     ensureDecoder();
@@ -366,7 +388,9 @@ function startTalking() {
   if (receiving) { setStatus('کانال مشغول است', 'err'); return; }
   talking = true;
   ctx.resume();
-  ws.send(JSON.stringify({ type: 'start' }));
+  const wantVideo = $('cam').checked;
+  ws.send(JSON.stringify({ type: 'start', video: wantVideo }));
+  if (wantVideo) startVideo();
   $('ptt').classList.add('active');
   setStatus('در حال ارسال…', 'tx');
 }
@@ -374,6 +398,7 @@ function startTalking() {
 async function stopTalking(notify = true) {
   if (!talking) return;
   talking = false;
+  clearInterval(vidTimer);
   $('ptt').classList.remove('active');
   if (useOpus && encoder && encoder.state === 'configured') {
     opusBuf = new Float32Array(0);
@@ -384,6 +409,45 @@ async function stopTalking(notify = true) {
   if (notify && ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stop' }));
   if (connected && !receiving) refreshIdle();
 }
+
+let camStream = null, vidTimer = null;
+const camVideo = document.createElement('video'), camCanvas = document.createElement('canvas');
+async function startVideo() {
+  try {
+    if (!camStream) {
+      camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
+      camVideo.srcObject = camStream; camVideo.muted = true; await camVideo.play();
+    }
+  } catch (e) { setStatus('دسترسی به وبکم ممکن نشد', 'err'); return; }
+  camCanvas.width = 320; camCanvas.height = 240;
+  const g = camCanvas.getContext('2d');
+  clearInterval(vidTimer);
+  vidTimer = setInterval(() => {
+    if (!talking) return;
+    g.drawImage(camVideo, 0, 0, 320, 240);
+    camCanvas.toBlob(async (b) => {
+      if (!b || !talking || !ws || ws.readyState !== 1) return;
+      const u = new Uint8Array(await b.arrayBuffer()), o = new Uint8Array(u.length + 1);
+      o[0] = 2; o.set(u, 1); ws.send(o.buffer);
+    }, 'image/jpeg', 0.5);
+  }, 200);
+}
+
+function addMsg(m) {
+  const d = document.createElement('div');
+  d.dataset.id = m.id;
+  d.textContent = m.name + ': ' + m.text; // textContent: بدون خطر تزریق HTML
+  $('log').appendChild(d);
+  $('log').scrollTop = 1e9;
+}
+function sendChat() {
+  const t = $('chatIn').value.trim();
+  if (!t || !ws || ws.readyState !== 1) return;
+  ws.send(JSON.stringify({ type: 'chat', text: t }));
+  $('chatIn').value = '';
+}
+$('chatBtn').addEventListener('click', sendChat);
+$('chatIn').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
 
 const ptt = $('ptt');
 ptt.addEventListener('pointerdown', (e) => { ptt.setPointerCapture(e.pointerId); startTalking(); });
@@ -404,6 +468,8 @@ $('leave').addEventListener('click', () => {
   stopTalking(false);
   clearTimeout(reconnectTimer);
   if (ws) ws.close();
+  clearInterval(vidTimer);
+  if (camStream) { camStream.getTracks().forEach((t) => t.stop()); camStream = null; }
   try { if (encoder) encoder.close(); } catch (e) {}
   try { if (decoder) decoder.close(); } catch (e) {}
   encoder = null; decoder = null; useOpus = false; opusBuf = new Float32Array(0);
