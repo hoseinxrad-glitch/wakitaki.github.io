@@ -86,7 +86,7 @@ wss.on('connection', (ws, req) => {
     room.clients.delete(ws);
     if (!room.clients.size && !room.msgs.length) rooms.delete(roomName);
     else presence(room);
-  });
+  }); 
   ws.on('error', () => {});
 });
 
