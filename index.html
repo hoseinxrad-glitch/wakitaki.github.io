@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>واکی تاکی آنلاین</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --field: #222b22;
+    --body: #d8d2ba;
+    --ink: #1b2119;
+    --muted: #6b6f5c;
+    --lcd: #141a14;
+    --tx: #ffae00;
+    --rx: #4ade80;
+    --err: #ff6b5e;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    font-family: 'Vazirmatn', system-ui, sans-serif;
+    background: var(--field);
+    color: var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    padding: env(safe-area-inset-top, 0) 16px env(safe-area-inset-bottom, 0);
+    -webkit-tap-highlight-color: transparent;
+  }
+  .radio {
+    position: relative;
+    width: 100%; max-width: 380px;
+    background: var(--body);
+    border-radius: 28px;
+    padding: 28px 24px 32px;
+    box-shadow: 0 24px 60px rgba(0,0,0,.45);
+  }
+  .radio::before { /* antenna */
+    content: ""; position: absolute; top: -46px; right: 44px;
+    width: 14px; height: 50px; background: #121712; border-radius: 7px 7px 0 0;
+  }
+  .grille {
+    height: 34px; margin-bottom: 18px; border-radius: 8px;
+    background: radial-gradient(circle, #8f8a74 1.6px, transparent 2px) 0 0 / 12px 12px;
+    opacity: .8;
+  }
+  .lcd {
+    background: var(--lcd); color: var(--rx);
+    border-radius: 12px; padding: 14px 16px; min-height: 92px;
+    display: flex; flex-direction: column; justify-content: space-between; gap: 8px;
+    border: 3px solid #0b0f0b;
+  }
+  .lcd .row { display: flex; justify-content: space-between; font-size: 13px; color: #8aa38a; }
+  .lcd .status { font-size: 20px; font-weight: 800; }
+  .lcd.tx .status { color: var(--tx); }
+  .lcd.rx .status { color: var(--rx); }
+  .lcd.err .status { color: var(--err); }
+
+  .ptt-wrap { display: flex; justify-content: center; margin: 28px 0 14px; }
+  #ptt {
+    width: 190px; height: 190px; border-radius: 50%;
+    border: 10px solid #121712;
+    background: #2f3a2f; color: #e8e2d0;
+    font: 800 20px 'Vazirmatn', sans-serif;
+    box-shadow: inset 0 -8px 0 rgba(0,0,0,.35), 0 6px 0 #0d110d;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    cursor: pointer;
+    transition: transform .08s, background .12s;
+  }
+  #ptt.active {
+    background: var(--tx); color: var(--ink);
+    transform: translateY(5px);
+    box-shadow: inset 0 -4px 0 rgba(0,0,0,.25), 0 1px 0 #0d110d;
+  }
+  #ptt:disabled { opacity: .45; cursor: not-allowed; }
+  #ptt:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
+  .hint { text-align: center; font-size: 13px; color: var(--muted); margin: 0; }
+
+  label { display: block; font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
+  input {
+    width: 100%; padding: 12px 14px; font: 400 16px 'Vazirmatn', sans-serif;
+    background: #efe9d3; color: var(--ink);
+    border: 2px solid #b9b39a; border-radius: 10px;
+  }
+  input:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  .btn {
+    width: 100%; margin-top: 22px; padding: 14px; border: 0; border-radius: 12px;
+    font: 800 17px 'Vazirmatn', sans-serif; background: var(--field); color: #e8e2d0; cursor: pointer;
+  }
+  .btn:focus-visible { outline: 3px solid var(--tx); outline-offset: 3px; }
+  .link { background: none; border: 0; color: var(--muted); font: 400 13px 'Vazirmatn', sans-serif;
+          cursor: pointer; display: block; margin: 16px auto 0; text-decoration: underline; }
+  .err { color: #a3281d; font-size: 13px; min-height: 18px; margin: 10px 0 0; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
+  [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { #ptt { transition: none; } }
+</style>
+</head>
+<body>
+<main class="radio">
+  <div class="grille" aria-hidden="true"></div>
+
+  <!-- صفحه‌ی ورود -->
+  <section id="join">
+    <h1>واکی تاکی آنلاین</h1>
+    <p class="sub">با هر کسی که در همین کانال باشد حرف بزنید.</p>
+    <label for="name">نام شما</label>
+    <input id="name" maxlength="30" autocomplete="nickname" placeholder="مثلاً علی">
+    <label for="room">نام کانال</label>
+    <input id="room" maxlength="40" placeholder="عمومی">
+    <p class="err" id="err" role="alert"></p>
+    <button class="btn" id="joinBtn">ورود به کانال</button>
+  </section>
+
+  <!-- صفحه‌ی واکی تاکی -->
+  <section id="radio" hidden>
+    <div class="lcd" id="lcd">
+      <div class="row"><span id="roomTitle"></span><span id="count"></span></div>
+      <div class="status" id="status">در حال اتصال…</div>
+    </div>
+    <div class="ptt-wrap">
+      <button id="ptt" disabled aria-label="نگه دارید و صحبت کنید">نگه دار و صحبت کن</button>
+    </div>
+    <p class="hint">دکمه را نگه دارید یا کلید Space را فشار دهید. با رها کردن، صدا قطع می‌شود.</p>
+    <button class="link" id="leave">خروج از کانال</button>
+  </section>
+</main>
+
+<script>
+// بعد از دیپلوی روی Render، آدرس سرور خودتان را اینجا بگذارید (با wss://)
+const PROD_WS_URL = 'wss://YOUR-APP.onrender.com';
+const WS_URL = ['localhost', '127.0.0.1'].includes(location.hostname) ? 'ws://localhost:3000' : PROD_WS_URL;
+const SAMPLE_RATE = 16000;
+
+const $ = (id) => document.getElementById(id);
+let ws, ctx, micStream, workletNode;
+let joined = false, connected = false, talking = false, receiving = false;
+let nextTime = 0, pending = [], pendingLen = 0, reconnectTimer = null, cfg = {};
+
+try {
+  $('name').value = localStorage.getItem('wt-name') || '';
+  $('room').value = localStorage.getItem('wt-room') || '';
+} catch (e) {}
+
+const workletCode = `
+class Cap extends AudioWorkletProcessor {
+  process(inputs) {
+    const ch = inputs[0] && inputs[0][0];
+    if (ch) this.port.postMessage(ch.slice(0));
+    return true;
+  }
+}
+registerProcessor('cap', Cap);`;
+
+function setStatus(text, mode) {
+  $('status').textContent = text;
+  $('lcd').className = 'lcd' + (mode ? ' ' + mode : '');
+}
+
+function refreshIdle() {
+  if (!connected) return setStatus('در حال اتصال…');
+  setStatus('کانال آزاد است');
+}
+
+async function join() {
+  const name = $('name').value.trim() || 'ناشناس';
+  const room = $('room').value.trim() || 'عمومی';
+  $('err').textContent = '';
+  try { localStorage.setItem('wt-name', name); localStorage.setItem('wt-room', room); } catch (e) {}
+
+  try {
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    await ctx.resume();
+    micStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+    });
+    await setupCapture();
+  } catch (e) {
+    $('err').textContent = 'دسترسی به میکروفن ممکن نشد. اجازه‌ی میکروفن را در مرورگر فعال کنید و دوباره امتحان کنید.';
+    return;
+  }
+
+  cfg = { name, room };
+  joined = true;
+  $('join').hidden = true;
+  $('radio').hidden = false;
+  $('roomTitle').textContent = 'کانال: ' + room;
+  $('count').textContent = '';
+  setStatus('در حال اتصال…');
+  connect();
+}
+
+async function setupCapture() {
+  const url = URL.createObjectURL(new Blob([workletCode], { type: 'application/javascript' }));
+  await ctx.audioWorklet.addModule(url);
+  const src = ctx.createMediaStreamSource(micStream);
+  workletNode = new AudioWorkletNode(ctx, 'cap');
+  const mute = ctx.createGain();
+  mute.gain.value = 0; // برای اینکه صدای خودتان پخش نشود
+  src.connect(workletNode);
+  workletNode.connect(mute);
+  mute.connect(ctx.destination);
+  workletNode.port.onmessage = (e) => {
+    if (!talking) return;
+    pending.push(e.data);
+    pendingLen += e.data.length;
+    if (pendingLen >= 4096) flush();
+  };
+}
+
+function flush() {
+  if (!pendingLen) return;
+  const all = new Float32Array(pendingLen);
+  let o = 0;
+  for (const p of pending) { all.set(p, o); o += p.length; }
+  pending = []; pendingLen = 0;
+
+  const ratio = ctx.sampleRate / SAMPLE_RATE;
+  const len = Math.floor(all.length / ratio);
+  const out = new Int16Array(len);
+  for (let i = 0; i < len; i++) {
+    const s = Math.floor(i * ratio);
+    const e = Math.max(s + 1, Math.min(Math.floor((i + 1) * ratio), all.length));
+    let sum = 0;
+    for (let j = s; j < e; j++) sum += all[j];
+    const v = Math.max(-1, Math.min(1, sum / (e - s)));
+    out[i] = v < 0 ? v * 32768 : v * 32767;
+  }
+  if (ws && ws.readyState === 1) ws.send(out.buffer);
+}
+
+function connect() {
+  clearTimeout(reconnectTimer);
+  const q = new URLSearchParams({ room: cfg.room, name: cfg.name });
+  ws = new WebSocket(WS_URL + '/?' + q);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    connected = true;
+    $('ptt').disabled = false;
+    refreshIdle();
+  };
+  ws.onclose = () => {
+    connected = false;
+    receiving = false;
+    stopTalking(false);
+    $('ptt').disabled = true;
+    if (joined) {
+      setStatus('اتصال قطع شد، در حال تلاش دوباره…', 'err');
+      reconnectTimer = setTimeout(connect, 2000);
+    }
+  };
+  ws.onmessage = (ev) => {
+    if (typeof ev.data !== 'string') return play(ev.data);
+    const m = JSON.parse(ev.data);
+    if (m.type === 'presence') $('count').textContent = m.count + ' نفر آنلاین';
+    else if (m.type === 'talking') { receiving = true; nextTime = 0; setStatus(m.name + ' صحبت می‌کند', 'rx'); }
+    else if (m.type === 'idle') { receiving = false; if (!talking) refreshIdle(); }
+    else if (m.type === 'busy') { stopTalking(false); setStatus('کانال مشغول است: ' + m.name, 'err'); }
+  };
+}
+
+function play(buf) {
+  const i16 = new Int16Array(buf);
+  const f = new Float32Array(i16.length);
+  for (let i = 0; i < i16.length; i++) f[i] = i16[i] / 32768;
+  const ab = ctx.createBuffer(1, f.length, SAMPLE_RATE);
+  ab.copyToChannel(f, 0);
+  const s = ctx.createBufferSource();
+  s.buffer = ab;
+  s.connect(ctx.destination);
+  const now = ctx.currentTime;
+  if (nextTime < now + 0.05) nextTime = now + 0.15; // بافر کوچک برای صدای روان
+  s.start(nextTime);
+  nextTime += ab.duration;
+}
+
+function startTalking() {
+  if (talking || !connected) return;
+  if (receiving) { setStatus('کانال مشغول است', 'err'); return; }
+  talking = true;
+  ctx.resume();
+  ws.send(JSON.stringify({ type: 'start' }));
+  $('ptt').classList.add('active');
+  setStatus('در حال ارسال…', 'tx');
+}
+
+function stopTalking(notify = true) {
+  if (!talking) return;
+  talking = false;
+  flush();
+  if (notify && ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'stop' }));
+  $('ptt').classList.remove('active');
+  if (connected && !receiving) refreshIdle();
+}
+
+const ptt = $('ptt');
+ptt.addEventListener('pointerdown', (e) => { ptt.setPointerCapture(e.pointerId); startTalking(); });
+ptt.addEventListener('pointerup', () => stopTalking());
+ptt.addEventListener('pointercancel', () => stopTalking());
+ptt.addEventListener('contextmenu', (e) => e.preventDefault());
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && joined && !e.repeat && document.activeElement.tagName !== 'INPUT') {
+    e.preventDefault(); startTalking();
+  }
+});
+window.addEventListener('keyup', (e) => { if (e.code === 'Space') stopTalking(); });
+window.addEventListener('blur', () => stopTalking());
+
+$('joinBtn').addEventListener('click', join);
+$('leave').addEventListener('click', () => {
+  joined = false;
+  stopTalking(false);
+  clearTimeout(reconnectTimer);
+  if (ws) ws.close();
+  if (micStream) micStream.getTracks().forEach((t) => t.stop());
+  if (ctx) ctx.close();
+  $('radio').hidden = true;
+  $('join').hidden = false;
+});
+</script>
+</body>
+</html>
