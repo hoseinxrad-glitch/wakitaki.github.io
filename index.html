@@ -3,107 +3,75 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>واکی تاکی آنلاین</title>
+<title>واکی تاکی آنلاین | گفتگوی صوتی و تصویری زنده</title>
+<meta name="description" content="واکی تاکی آنلاین رایگان: با نگه داشتن یک دکمه صحبت کنید، چت کنید و تصویر وبکم بفرستید.">
+<meta name="theme-color" content="#0b0f14">
+<link rel="canonical" href="https://hoseinxrad-glitch.github.io/wakitaki.github.io/">
+<meta property="og:title" content="واکی تاکی آنلاین"><meta property="og:type" content="website"><meta property="og:url" content="https://hoseinxrad-glitch.github.io/wakitaki.github.io/">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;600;800&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --field: #222b22;
-    --body: #d8d2ba;
-    --ink: #1b2119;
-    --muted: #6b6f5c;
-    --lcd: #141a14;
-    --tx: #ffae00;
-    --rx: #4ade80;
-    --err: #ff6b5e;
-  }
+  :root { --bg:#0b0f14; --surface:#141a22; --surface2:#1c2530; --line:#263140; --text:#e8edf3; --muted:#8794a6;
+          --tx:#ffb020; --rx:#3ddc97; --err:#ff6b6b; }
   * { box-sizing: border-box; }
-  html, body { height: 100%; margin: 0; }
-  body {
-    font-family: 'Vazirmatn', system-ui, sans-serif;
-    background: var(--field);
-    color: var(--ink);
-    display: flex; align-items: center; justify-content: center;
-    padding: env(safe-area-inset-top, 0) 16px env(safe-area-inset-bottom, 0);
-    -webkit-tap-highlight-color: transparent;
-  }
-  .radio {
-    position: relative;
-    width: 100%; max-width: 380px;
-    background: var(--body);
-    border-radius: 28px;
-    padding: 28px 24px 32px;
-    box-shadow: 0 24px 60px rgba(0,0,0,.45);
-  }
-  .radio::before { /* antenna */
-    content: ""; position: absolute; top: -46px; right: 44px;
-    width: 14px; height: 50px; background: #121712; border-radius: 7px 7px 0 0;
-  }
-  .grille {
-    height: 34px; margin-bottom: 18px; border-radius: 8px;
-    background: radial-gradient(circle, #8f8a74 1.6px, transparent 2px) 0 0 / 12px 12px;
-    opacity: .8;
-  }
-  .lcd {
-    background: var(--lcd); color: var(--rx);
-    border-radius: 12px; padding: 14px 16px; min-height: 92px;
-    display: flex; flex-direction: column; justify-content: space-between; gap: 8px;
-    border: 3px solid #0b0f0b;
-  }
-  .lcd .row { display: flex; justify-content: space-between; font-size: 13px; color: #8aa38a; }
-  .lcd .status { font-size: 20px; font-weight: 800; }
-  .lcd.tx .status { color: var(--tx); }
-  .lcd.rx .status { color: var(--rx); }
-  .lcd.err .status { color: var(--err); }
-
-  .ptt-wrap { display: flex; justify-content: center; margin: 28px 0 14px; }
-  #ptt {
-    width: 190px; height: 190px; border-radius: 50%;
-    border: 10px solid #121712;
-    background: #2f3a2f; color: #e8e2d0;
-    font: 800 20px 'Vazirmatn', sans-serif;
-    box-shadow: inset 0 -8px 0 rgba(0,0,0,.35), 0 6px 0 #0d110d;
-    touch-action: none; user-select: none; -webkit-user-select: none;
-    cursor: pointer;
-    transition: transform .08s, background .12s;
-  }
-  #ptt.active {
-    background: var(--tx); color: var(--ink);
-    transform: translateY(5px);
-    box-shadow: inset 0 -4px 0 rgba(0,0,0,.25), 0 1px 0 #0d110d;
-  }
-  #ptt:disabled { opacity: .45; cursor: not-allowed; }
-  #ptt:focus-visible { outline: 3px solid var(--ink); outline-offset: 4px; }
-  .hint { text-align: center; font-size: 13px; color: var(--muted); margin: 0; }
-
-  label { display: block; font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
-  input {
-    width: 100%; padding: 12px 14px; font: 400 16px 'Vazirmatn', sans-serif;
-    background: #efe9d3; color: var(--ink);
-    border: 2px solid #b9b39a; border-radius: 10px;
-  }
-  input:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
-  .btn {
-    width: 100%; margin-top: 22px; padding: 14px; border: 0; border-radius: 12px;
-    font: 800 17px 'Vazirmatn', sans-serif; background: var(--field); color: #e8e2d0; cursor: pointer;
-  }
-  .btn:focus-visible { outline: 3px solid var(--tx); outline-offset: 3px; }
-  .link { background: none; border: 0; color: var(--muted); font: 400 13px 'Vazirmatn', sans-serif;
-          cursor: pointer; display: block; margin: 16px auto 0; text-decoration: underline; }
-  .err { color: #a3281d; font-size: 13px; min-height: 18px; margin: 10px 0 0; }
-  h1 { font-size: 22px; margin: 0 0 4px; }
-  .sub { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
+  html, body { min-height: 100%; margin: 0; }
+  body { font-family: 'Vazirmatn', system-ui, sans-serif; color: var(--text);
+    background: radial-gradient(900px 520px at 50% -10%, #17382f 0%, transparent 60%),
+                radial-gradient(700px 420px at 100% 100%, #2b2112 0%, transparent 60%), var(--bg);
+    background-attachment: fixed; -webkit-tap-highlight-color: transparent; }
   [hidden] { display: none !important; }
-  #vid { display: block; width: 100%; border-radius: 10px; margin-top: 12px; background: #000; }
-  .opts { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-top: 12px; }
-  .opts label { margin: 0; font-weight: 400; display: flex; gap: 6px; align-items: center; }
-  .users { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
-  #log { height: 150px; overflow-y: auto; background: #efe9d3; border-radius: 10px; padding: 8px 10px; margin-top: 16px; font-size: 14px; }
-  #log div { padding: 2px 0; word-break: break-word; }
+  label { display: block; font-size: 14px; font-weight: 600; margin: 14px 0 6px; }
+  input, textarea { width: 100%; padding: 12px 14px; font: 400 16px 'Vazirmatn', sans-serif; color: var(--text);
+    background: #0d1218; border: 1px solid var(--line); border-radius: 12px; }
+  input::placeholder { color: #5d6a7b; }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--rx); outline-offset: 2px; }
+  h1 { font-size: 26px; font-weight: 800; margin: 0 0 6px; letter-spacing: -.3px; }
+  .sub { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
+  .err { color: var(--err); font-size: 13px; min-height: 18px; margin: 10px 0 0; }
+  .btn, .go { width: 100%; margin-top: 22px; padding: 14px; border: 0; border-radius: 14px; cursor: pointer;
+    font: 800 17px 'Vazirmatn', sans-serif; background: var(--rx); color: #06241a; transition: filter .15s, transform .1s; }
+  .btn:hover, .go:hover { filter: brightness(1.08); }
+  .btn:active, .go:active { transform: scale(.98); }
+  #log div b { color: var(--rx); font-weight: 600; margin-inline-end: 4px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+  body { display: flex; align-items: center; justify-content: center;
+    padding: calc(env(safe-area-inset-top, 0px) + 16px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px); }
+  .radio { width: 100%; max-width: 440px; padding: 26px 22px 28px; border-radius: 28px;
+    background: rgba(20,26,34,.85); border: 1px solid var(--line); backdrop-filter: blur(14px);
+    box-shadow: 0 30px 80px rgba(0,0,0,.55); }
+  .grille { display: none; }
+  .lcd { background: #0d1218; border: 1px solid var(--line); border-radius: 18px; padding: 16px 18px; min-height: 98px;
+    display: flex; flex-direction: column; justify-content: space-between; gap: 8px; transition: border-color .2s, box-shadow .2s; }
+  .lcd .row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+  .lcd .status { font-size: 20px; font-weight: 700; color: var(--text); }
+  .lcd.tx { border-color: var(--tx); box-shadow: 0 0 24px rgba(255,176,32,.18); } .lcd.tx .status { color: var(--tx); }
+  .lcd.rx { border-color: var(--rx); box-shadow: 0 0 24px rgba(61,220,151,.18); } .lcd.rx .status { color: var(--rx); }
+  .lcd.err { border-color: var(--err); } .lcd.err .status { color: var(--err); }
+  .ptt-wrap { display: flex; justify-content: center; margin: 30px 0 18px; }
+  #ptt { width: 200px; height: 200px; border-radius: 50%; border: 1px solid #334256; color: var(--text); cursor: pointer;
+    font: 700 18px 'Vazirmatn', sans-serif; touch-action: none; user-select: none; -webkit-user-select: none;
+    background: radial-gradient(circle at 50% 30%, #263243, #131a23);
+    box-shadow: 0 0 0 9px rgba(255,176,32,.07), 0 20px 44px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08);
+    transition: transform .1s, box-shadow .2s; }
+  .radio:has(.lcd.rx) #ptt { box-shadow: 0 0 0 9px rgba(61,220,151,.13), 0 20px 44px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08); }
+  #ptt.active { color: #1b1204; border-color: var(--tx); transform: scale(.96);
+    background: radial-gradient(circle at 50% 30%, #ffcf6b, #ff9f0a); animation: pulse 1.2s ease-out infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(255,176,32,.55), 0 20px 44px rgba(0,0,0,.5); }
+                     100% { box-shadow: 0 0 0 30px rgba(255,176,32,0), 0 20px 44px rgba(0,0,0,.5); } }
+  #ptt:disabled { opacity: .4; cursor: not-allowed; }
+  .hint { text-align: center; font-size: 13px; color: var(--muted); margin: 0; }
+  .link { background: none; border: 0; color: var(--muted); font: 400 13px 'Vazirmatn', sans-serif; cursor: pointer; display: block; margin: 18px auto 0; text-decoration: underline; }
+  #vid { display: block; width: 100%; border-radius: 16px; margin-top: 14px; background: #000; border: 1px solid var(--line); }
+  .opts { display: flex; justify-content: space-between; align-items: center; font-size: 13px; margin-top: 14px; color: var(--muted); }
+  .opts label { margin: 0; font-weight: 400; display: flex; gap: 8px; align-items: center; }
+  .opts input { accent-color: var(--rx); }
+  .users { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+  #log { height: 160px; overflow-y: auto; background: #0d1218; border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin-top: 18px; font-size: 14px; }
+  #log div { padding: 4px 0; word-break: break-word; }
   .chatbar { display: flex; gap: 8px; margin-top: 8px; }
-  .chatbar .btn { width: auto; margin: 0; padding: 0 16px; font-size: 15px; }
-  @media (prefers-reduced-motion: reduce) { #ptt { transition: none; } }
+  .chatbar .btn { width: auto; margin: 0; padding: 0 20px; font-size: 15px; }
 </style>
 </head>
 <body>
@@ -450,7 +418,7 @@ async function startVideo() {
 function addMsg(m) {
   const d = document.createElement('div');
   d.dataset.id = m.id;
-  d.textContent = m.name + ': ' + m.text; // textContent: بدون خطر تزریق HTML
+  const b = document.createElement('b'); b.textContent = m.name; d.append(b, document.createTextNode(m.text)); // textContent: بدون خطر تزریق HTML
   $('log').appendChild(d);
   $('log').scrollTop = 1e9;
 }
