@@ -130,6 +130,8 @@ try {
   $('name').value = localStorage.getItem('wt-name') || '';
   $('room').value = localStorage.getItem('wt-room') || '';
 } catch (e) {}
+// لینک مستقیم از پیام‌رسان: ?room=نام&name=اسم فرم ورود را از قبل پر می‌کند
+try { const u = new URLSearchParams(location.search); if (u.get('name')) $('name').value = u.get('name'); if (u.get('room')) $('room').value = u.get('room'); } catch (e) {}
 
 const workletCode = `
 class Cap extends AudioWorkletProcessor {

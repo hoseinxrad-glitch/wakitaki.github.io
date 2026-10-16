@@ -109,6 +109,8 @@ let denied = null;
 const camVideo = document.createElement('video'), camCanvas = document.createElement('canvas');
 
 try { $('name').value = localStorage.getItem('mt-name') || ''; $('room').value = localStorage.getItem('mt-room') || ''; } catch (e) {}
+// لینک مستقیم از پیام‌رسان: ?room=نام&name=اسم فرم ورود را از قبل پر می‌کند
+try { const u = new URLSearchParams(location.search); if (u.get('name')) $('name').value = u.get('name'); if (u.get('room')) $('room').value = u.get('room'); } catch (e) {}
 
 function makeTile(name, local) {
   const t = document.createElement('div'); t.className = 'tile';
