@@ -4,6 +4,13 @@ const { WebSocketServer } = require('ws');
 const PORT = process.env.PORT || 3000;
 const ADMIN = process.env.ADMIN_PASSWORD || '';
 const ORIGIN = process.env.ALLOWED_ORIGIN || '';
+// اگر DATABASE_URL تنظیم باشد، ورود فقط با حساب پیام‌رسان ممکن است و نام کاربر از دیتابیس خوانده می‌شود
+let pool = null;
+if (process.env.DATABASE_URL) {
+  const { Pool } = require('pg');
+  pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 3 });
+  pool.on('error', (e) => console.error('db error', e.message));
+}
 
 const rooms = new Map(); // key -> room  (تماس تصویری با پیشوند meet:)
 const banned = new Set(), muted = new Set();
@@ -89,12 +96,21 @@ const wss = new WebSocketServer({
   verifyClient: (i) => !ORIGIN || i.origin === ORIGIN || (i.origin || '').startsWith('http://localhost'),
 });
 
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
   const q = new URL(req.url, 'http://x').searchParams;
   const roomName = (q.get('room') || 'general').trim().slice(0, 40) || 'general';
-  const name = (q.get('name') || 'ناشناس').trim().slice(0, 30) || 'ناشناس';
+  let name = (q.get('name') || 'ناشناس').trim().slice(0, 30) || 'ناشناس';
   const meet = q.get('mode') === 'meet';
   const key = (meet ? 'meet:' : '') + roomName;
+  if (pool) {
+    let row = null;
+    try {
+      row = (await pool.query('select u.username, u.banned from sessions s join users u on u.id = s.user_id where s.token = $1', [String(q.get('token') || '')])).rows[0];
+    } catch (e) { console.error('auth error', e.message); }
+    if (!row || row.banned) { send(ws, { type: 'denied', reason: 'auth' }); return ws.close(); }
+    name = row.username;
+    if (ws.readyState !== 1) return;
+  }
   ws.userName = name;
   ws.pid = ++pidSeq & 0xffff;
   const deny = (reason) => { send(ws, { type: 'denied', reason }); ws.close(); };

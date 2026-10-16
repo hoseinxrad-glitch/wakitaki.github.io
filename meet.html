@@ -75,6 +75,7 @@
     <label for="room">کد اتاق</label>
     <input id="room" maxlength="40" placeholder="مثلاً جلسه-۱">
     <p class="err" id="err" role="alert"></p>
+    <p class="sub">با حساب پیام‌رسان وارد می‌شوید. <a href="https://hoseinxrad-glitch.github.io/hmash.github.io/" style="color:var(--rx)">ورود یا ثبت‌نام در پیام‌رسان</a></p>
     <button class="go" id="join">ورود به تماس</button>
     <p class="note">برای جلوگیری از بازخورد صدا از هدفون استفاده کنید. فقط Chrome و Edge جدید پشتیبانی می‌شوند.</p>
   </div>
@@ -112,6 +113,12 @@ try { $('name').value = localStorage.getItem('mt-name') || ''; $('room').value =
 // لینک مستقیم از پیام‌رسان: ?room=نام&name=اسم فرم ورود را از قبل پر می‌کند
 try { const u = new URLSearchParams(location.search); if (u.get('name')) $('name').value = u.get('name'); if (u.get('room')) $('room').value = u.get('room'); } catch (e) {}
 
+// ورود یکپارچه: با حساب پیام‌رسان وارد می‌شوید و اسم شما قابل تغییر نیست
+const MESSENGER = 'https://hoseinxrad-glitch.github.io/hmash.github.io/';
+function msToken() { try { return localStorage.getItem('ms-token') || ''; } catch (e) { return ''; } }
+function msUser() { try { return localStorage.getItem('ms-user') || ''; } catch (e) { return ''; } }
+if (msUser()) { $('name').value = msUser(); $('name').readOnly = true; }
+
 function makeTile(name, local) {
   const t = document.createElement('div'); t.className = 'tile';
   const av = document.createElement('div'); av.className = 'av';
@@ -127,7 +134,8 @@ function makeTile(name, local) {
 }
 
 async function join() {
-  const name = $('name').value.trim() || 'ناشناس', room = $('room').value.trim() || 'عمومی';
+  if (!msToken()) { $('err').textContent = 'برای ورود، اول در پیام‌رسان وارد شوید یا ثبت‌نام کنید.'; return; }
+  const name = msUser() || $('name').value.trim() || 'ناشناس', room = $('room').value.trim() || 'عمومی';
   $('err').textContent = '';
   if (!window.AudioEncoder || !window.AudioDecoder) { $('err').textContent = 'مرورگر شما پشتیبانی نمی‌کند. از Chrome یا Edge جدید استفاده کنید.'; return; }
   try { localStorage.setItem('mt-name', name); localStorage.setItem('mt-room', room); } catch (e) {}
@@ -176,13 +184,13 @@ function onDenied() {
   if (why === 'password') {
     const pw = prompt('این کانال رمز دارد. رمز را وارد کنید:');
     if (pw) { cfg.pw = pw; return connect(); }
-  } else alert(why === 'locked' ? 'این کانال قفل است.' : why === 'full' ? 'ظرفیت این کانال پر است.' : 'ورود ممکن نشد.');
+  } else alert(why === 'locked' ? 'این کانال قفل است.' : why === 'full' ? 'ظرفیت این کانال پر است.' : why === 'auth' ? 'نشست شما معتبر نیست؛ دوباره در پیام‌رسان وارد شوید.' : 'ورود ممکن نشد.');
   leave();
 }
 
 function connect() {
   clearTimeout(reconnect);
-  ws = new WebSocket(WS_URL + '/?' + new URLSearchParams({ room: cfg.room, name: cfg.name, mode: 'meet', ...(cfg.pw ? { pw: cfg.pw } : {}) }));
+  ws = new WebSocket(WS_URL + '/?' + new URLSearchParams({ room: cfg.room, name: cfg.name, mode: 'meet', token: msToken(), ...(cfg.pw ? { pw: cfg.pw } : {}) }));
   ws.binaryType = 'arraybuffer';
   ws.onclose = () => { if (denied) return onDenied(); if (joined) reconnect = setTimeout(connect, 2000); };
   ws.onmessage = (ev) => {

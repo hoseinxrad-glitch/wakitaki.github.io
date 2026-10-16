@@ -88,6 +88,7 @@
     <label for="room">نام کانال</label>
     <input id="room" maxlength="40" placeholder="عمومی">
     <p class="err" id="err" role="alert"></p>
+    <p class="sub">با حساب پیام‌رسان وارد می‌شوید. <a href="https://hoseinxrad-glitch.github.io/hmash.github.io/" style="color:var(--rx)">ورود یا ثبت‌نام در پیام‌رسان</a></p>
     <button class="btn" id="joinBtn">ورود به کانال</button>
   </section>
 
@@ -133,6 +134,12 @@ try {
 // لینک مستقیم از پیام‌رسان: ?room=نام&name=اسم فرم ورود را از قبل پر می‌کند
 try { const u = new URLSearchParams(location.search); if (u.get('name')) $('name').value = u.get('name'); if (u.get('room')) $('room').value = u.get('room'); } catch (e) {}
 
+// ورود یکپارچه: با حساب پیام‌رسان وارد می‌شوید و اسم شما قابل تغییر نیست
+const MESSENGER = 'https://hoseinxrad-glitch.github.io/hmash.github.io/';
+function msToken() { try { return localStorage.getItem('ms-token') || ''; } catch (e) { return ''; } }
+function msUser() { try { return localStorage.getItem('ms-user') || ''; } catch (e) { return ''; } }
+if (msUser()) { $('name').value = msUser(); $('name').readOnly = true; }
+
 const workletCode = `
 class Cap extends AudioWorkletProcessor {
   process(inputs) {
@@ -154,7 +161,8 @@ function refreshIdle() {
 }
 
 async function join() {
-  const name = $('name').value.trim() || 'ناشناس';
+  if (!msToken()) { $('err').textContent = 'برای ورود، اول در پیام‌رسان وارد شوید یا ثبت‌نام کنید.'; return; }
+  const name = msUser() || $('name').value.trim() || 'ناشناس';
   const room = $('room').value.trim() || 'عمومی';
   $('err').textContent = '';
   try { localStorage.setItem('wt-name', name); localStorage.setItem('wt-room', room); } catch (e) {}
@@ -273,13 +281,13 @@ function onDenied() {
   if (why === 'password') {
     const pw = prompt('این کانال رمز دارد. رمز را وارد کنید:');
     if (pw) { cfg.pw = pw; return connect(); }
-  } else alert(why === 'locked' ? 'این کانال قفل است.' : why === 'full' ? 'ظرفیت این کانال پر است.' : 'ورود ممکن نشد.');
+  } else alert(why === 'locked' ? 'این کانال قفل است.' : why === 'full' ? 'ظرفیت این کانال پر است.' : why === 'auth' ? 'نشست شما معتبر نیست؛ دوباره در پیام‌رسان وارد شوید.' : 'ورود ممکن نشد.');
   $('leave').click();
 }
 
 function connect() {
   clearTimeout(reconnectTimer);
-  const q = new URLSearchParams({ room: cfg.room, name: cfg.name, ...(cfg.pw ? { pw: cfg.pw } : {}) });
+  const q = new URLSearchParams({ room: cfg.room, name: cfg.name, token: msToken(), ...(cfg.pw ? { pw: cfg.pw } : {}) });
   ws = new WebSocket(WS_URL + '/?' + q);
   ws.binaryType = 'arraybuffer';
 
