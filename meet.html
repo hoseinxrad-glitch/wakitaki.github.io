@@ -61,6 +61,9 @@
   .bar button.leave { background: var(--err); color: #2a0606; }
   @media (max-width: 640px) { #chat { position: fixed; inset: 0 0 92px 0; width: auto; margin: 0; border-radius: 0; z-index: 5; }
     .bar button { padding: 11px 14px; font-size: 14px; } }
+  /* سبک‌تر: بدون blur روی تصویر زنده */
+  body { background-attachment: scroll; } #call { background: var(--bg); }
+  .nm { background: rgba(11,15,20,.82); backdrop-filter: none; } .bar { background: #141a22; backdrop-filter: none; }
 </style>
 </head>
 <body>
@@ -228,8 +231,10 @@ function schedule(p, f) {
   if (!f.length) return;
   const ab = ctx.createBuffer(1, f.length, RATE); ab.copyToChannel(f, 0);
   const s = ctx.createBufferSource(); s.buffer = ab; s.connect(ctx.destination);
-  const t = ctx.currentTime;
-  if (p.next < t) { if (p.next !== 0) p.lead = Math.min(0.8, p.lead + 0.1); p.next = t + p.lead; }
+  const t = ctx.currentTime, nowMs = performance.now();
+  if (p.next - t > p.lead + 0.3) return; // صف پخش خیلی عقب است: فریم‌های اضافه را دور بریز تا تأخیر جمع نشود
+  if (p.next < t) { if (p.next !== 0) { p.lead = Math.min(0.8, p.lead + 0.1); p.grew = nowMs; } p.next = t + p.lead; }
+  else if (p.lead > 0.25 && nowMs - (p.grew || 0) > 15000) { p.lead -= 0.05; p.grew = nowMs; } // بافر دوباره کوچک می‌شود
   s.start(p.next); p.next += ab.duration;
 }
 
@@ -243,6 +248,24 @@ setInterval(() => { // اگر تصویری نرسید، آواتار نشان ب
   for (const [id, p] of peers) if (id !== 'me' && !p.img.hidden && performance.now() - p.lastVid > 1500) { p.img.hidden = true; p.av.hidden = false; }
 }, 500);
 
+const LV = [[320, 240, 0.5, 170], [240, 180, 0.42, 250], [160, 120, 0.35, 400]]; // کیفیت تطبیقی بر اساس شلوغی شبکه
+let lv = 0, busy = 0, calm = 0;
+function camLoop() {
+  if (!camOn) return;
+  const [w, h, q, ms] = LV[lv];
+  if (ws && ws.readyState === 1 && ws.bufferedAmount < 8192) { // اگر شبکه عقب است فریم نفرست تا صدا عقب نیفتد
+    if (camCanvas.width !== w) { camCanvas.width = w; camCanvas.height = h; }
+    camCanvas.getContext('2d').drawImage(camVideo, 0, 0, w, h);
+    camCanvas.toBlob(async (b) => {
+      if (!b || !camOn || !ws || ws.readyState !== 1 || ws.bufferedAmount > 16384) return;
+      const u = new Uint8Array(await b.arrayBuffer()), o = new Uint8Array(u.length + 1);
+      o[0] = 2; o.set(u, 1); ws.send(o.buffer);
+    }, 'image/jpeg', q);
+    busy = 0; if (++calm > 30 && lv > 0) { lv--; calm = 0; }
+  } else { calm = 0; if (++busy >= 3 && lv < LV.length - 1) { lv++; busy = 0; } }
+  vidTimer = setTimeout(camLoop, ms);
+}
+
 async function toggleCam() {
   const me = peers.get('me');
   if (camOn) {
@@ -253,22 +276,13 @@ async function toggleCam() {
     return;
   }
   try {
-    camStream = await navigator.mediaDevices.getUserMedia({ video: { width: W, height: H } });
+    camStream = await navigator.mediaDevices.getUserMedia({ video: { width: W, height: H, frameRate: { ideal: 10 } } });
     camVideo.srcObject = camStream; await camVideo.play();
   } catch (e) { alert('دسترسی به دوربین ممکن نشد'); return; }
   camOn = true; me.img.hidden = false; me.av.hidden = true;
   $('camBtn').textContent = 'دوربین روشن'; $('camBtn').classList.remove('off');
-  camCanvas.width = W; camCanvas.height = H;
-  const g = camCanvas.getContext('2d');
-  vidTimer = setInterval(() => {
-    if (!camOn || !ws || ws.readyState !== 1) return;
-    g.drawImage(camVideo, 0, 0, W, H);
-    camCanvas.toBlob(async (b) => {
-      if (!b || !camOn || ws.readyState !== 1) return;
-      const u = new Uint8Array(await b.arrayBuffer()), o = new Uint8Array(u.length + 1);
-      o[0] = 2; o.set(u, 1); ws.send(o.buffer);
-    }, 'image/jpeg', 0.5);
-  }, 170);
+  lv = 0; busy = 0; calm = 0;
+  camLoop();
 }
 
 function addMsg(m) {

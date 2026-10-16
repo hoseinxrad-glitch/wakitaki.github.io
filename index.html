@@ -72,6 +72,7 @@
   #log div { padding: 4px 0; word-break: break-word; }
   .chatbar { display: flex; gap: 8px; margin-top: 8px; }
   .chatbar .btn { width: auto; margin: 0; padding: 0 20px; font-size: 15px; }
+  .radio { background: rgba(20,26,34,.96); backdrop-filter: none; }
 </style>
 </head>
 <body>
@@ -408,7 +409,7 @@ async function startVideo() {
     if (!talking) return;
     g.drawImage(camVideo, 0, 0, 320, 240);
     camCanvas.toBlob(async (b) => {
-      if (!b || !talking || !ws || ws.readyState !== 1) return;
+      if (!b || !talking || !ws || ws.readyState !== 1 || ws.bufferedAmount > 16384) return;
       const u = new Uint8Array(await b.arrayBuffer()), o = new Uint8Array(u.length + 1);
       o[0] = 2; o.set(u, 1); ws.send(o.buffer);
     }, 'image/jpeg', 0.5);

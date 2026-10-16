@@ -120,11 +120,11 @@ wss.on('connection', (ws, req) => {
       room.bytes += data.length;
       if (meet) { // تماس تصویری: همه با شناسه‌ی فرستنده پخش می‌شوند
         const out = Buffer.concat([Buffer.from([ws.pid >> 8, ws.pid & 255]), data]);
-        for (const c of room.clients) if (c !== ws && c.readyState === 1) c.send(out, { binary: true });
+        for (const c of room.clients) if (c !== ws && c.readyState === 1 && c.bufferedAmount < (data[0] === 2 ? 65536 : 524288)) c.send(out, { binary: true });
         return;
       }
       if (room.talker !== ws) return;
-      for (const c of room.clients) if (c !== ws && c.readyState === 1) c.send(data, { binary: true });
+      for (const c of room.clients) if (c !== ws && c.readyState === 1 && c.bufferedAmount < (data[0] === 2 ? 65536 : 524288)) c.send(data, { binary: true });
       return;
     }
     let m; try { m = JSON.parse(data.toString()); } catch { return; }
